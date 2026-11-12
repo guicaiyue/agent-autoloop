@@ -23,7 +23,7 @@ import { after, test } from "node:test";
 import { updateCode } from "../cli/update.ts";
 import { releaseOf } from "../host/version.ts";
 
-const PUBLISHED = "https://github.com/KKKKhazix/agent-autoloop.git";
+const PUBLISHED = "https://github.com/guicaiyue/agent-autoloop.git";
 const script = join(import.meta.dirname, "..", "install.sh");
 const dir = realpathSync(mkdtempSync(join(tmpdir(), "agent-autoloop-releases-")));
 after(() => rmSync(dir, { recursive: true, force: true }));

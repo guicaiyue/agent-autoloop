@@ -1,7 +1,7 @@
 ﻿# Installs the same released code as install.sh, using native Windows tools.
 $ErrorActionPreference = 'Stop'
 $installArgs = @($args)
-$published = 'https://github.com/KKKKhazix/agent-autoloop.git'
+$published = 'https://github.com/guicaiyue/agent-autoloop.git'
 $repository = if ($env:AGENT_AUTOLOOP_REPO) { $env:AGENT_AUTOLOOP_REPO } else { $published }
 $installRoot = if ($env:AGENT_AUTOLOOP_HOME) { [IO.Path]::GetFullPath($env:AGENT_AUTOLOOP_HOME) } else { Join-Path $env:USERPROFILE '.agent-autoloop' }
 $app = Join-Path $installRoot 'app'

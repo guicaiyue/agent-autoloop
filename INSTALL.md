@@ -9,7 +9,7 @@
 Windows PowerShell：
 
 ```powershell
-irm https://raw.githubusercontent.com/KKKKhazix/agent-autoloop/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/guicaiyue/agent-autoloop/main/install.ps1 | iex
 ```
 
 默认安装在 `$env:USERPROFILE\.agent-autoloop`，命令目录加入当前进程及用户 PATH。Windows 10 和 11 都能装，不需要管理员：后台服务是当前账号自己的登录任务。例外是 Windows 自带的 Administrator 账号（开着 UAC 时）：不提权建不了登录任务，提权建出来的任务又会让中台和它派的 Agent 带着完整的管理员权限，所以 `service install` 会拒绝并打印一行 PowerShell，改用「启动」文件夹在登录时以普通权限拉起中台。Windows 服务在本人登录后于后台常驻、不开窗口，退出 10 秒后自动重启，注销后停止；通过 SSH 管理时也可用 `service install`，任务会在 Windows 已登录的会话中运行；Codex 0.167 的原生沙箱在 OpenSSH 会话中会出现 runner pipe-in 超时，本机登录会话正常，见 [Codex 已知问题](https://github.com/openai/codex/issues/37722)。中台起不来、日志里是 `listen EACCES` 时，多半是 Hyper-V、WSL 把端口划进了系统保留范围：`netsh int ipv4 show excludedportrange protocol=tcp` 查看，在 `config.json` 里换一个范围外的端口。CI 或普通命令测试用 `--no-service`，再运行安装器打印的完整命令启动 `up`。桌面通知只在同一登录会话显示。
@@ -32,7 +32,7 @@ WSL2 仍按 Linux 安装；常驻服务需要发行版开启 systemd，没开则
 本仓库已公开，安装脚本和代码都可匿名下载，不需要 GitHub 账号、登录或 GitHub CLI（`gh`）。下面的 macOS/Linux 命令安装并启用登录后常驻服务：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/KKKKhazix/agent-autoloop/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/guicaiyue/agent-autoloop/main/install.sh | sh
 ```
 
 GitHub Issue 轮询和 PR 交付等功能另需已登录的 `gh`，按对应场景说明配置；运行 Agent 也仍需该 Agent 自己的登录或授权。中台在后台启动 Agent，桌面应用里能用的浏览器和电脑操作它不一定用得上（比如 Codex 应用里的 Chrome，后台的 `codex exec` 用不到）；要它操作网页，照[浏览器接入](docs/plugins.md#浏览器接入)配好，再用后台的启动方式实际跑一次。

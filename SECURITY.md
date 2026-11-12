@@ -1,6 +1,6 @@
 # 安全
 
-发现安全问题，请用 GitHub 的 [Security Advisories](https://github.com/KKKKhazix/agent-autoloop/security/advisories/new) 私下告诉我，不要开公开的 issue。
+发现安全问题，请用 GitHub 的 [Security Advisories](https://github.com/guicaiyue/agent-autoloop/security/advisories/new) 私下告诉我，不要开公开的 issue。
 
 这个入口打不开时，只在 Issue 中说明“需要私密联系维护者报告安全问题”，等维护者安排私密渠道；不要贴漏洞细节、密钥或业务资料。
 

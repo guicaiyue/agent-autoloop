@@ -25,16 +25,16 @@ Works on Windows, macOS, and Linux. You need Node 24 or newer, Git, and a comman
 Windows PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/KKKKhazix/agent-autoloop/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/guicaiyue/agent-autoloop/main/install.ps1 | iex
 ```
 
 macOS / Linux:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/KKKKhazix/agent-autoloop/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/guicaiyue/agent-autoloop/main/install.sh | sh
 ```
 
-The installer and `agent-autoloop update` both install the newest [release](https://github.com/KKKKhazix/agent-autoloop/releases), which has passed every check.
+The installer and `agent-autoloop update` both install the newest [release](https://github.com/guicaiyue/agent-autoloop/releases), which has passed every check.
 
 Then run a real loop with your own agent — ask, exit while it waits, make the call, resume:
 
