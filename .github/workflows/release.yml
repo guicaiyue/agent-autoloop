@@ -1,0 +1,51 @@
+name: release
+
+# 只有打了 v* tag 才跑：把这一版的源码打成构建物，算好 sha256，挂到 Release 上。
+# 部署只认这个构建物（NAS 上由 upgrade-release.sh 下载、校验、解包、换软链），不认仓库源码，
+# 所以生产机上没有 .git，也不需要从任何开发机推代码过去。
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  artifact:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 打包并算 sha256
+        run: |
+          set -eu
+          tag="${GITHUB_REF_NAME}"
+          prefix="agent-autoloop-${tag#v}"
+          mkdir -p out
+          # --prefix 让解包后是一个目录；gzip -n 不写时间戳，同一个 tag 每次打出来字节一致
+          git archive --format=tar --prefix="$prefix/" "$tag" | gzip -n -9 > "out/$prefix.tar.gz"
+          ( cd out && sha256sum "$prefix.tar.gz" > "$prefix.tar.gz.sha256" )
+          echo "prefix=$prefix" >> "$GITHUB_ENV"
+          {
+            echo "### $tag 的构建物"
+            echo
+            echo '```'
+            cat "out/$prefix.tar.gz.sha256"
+            echo '```'
+            echo
+            echo "commit: \`$(git rev-parse "$tag")\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 挂到 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" \
+              --title "Agent Autoloop ${GITHUB_REF_NAME#v}" \
+              --notes "构建物由 release.yml 从 tag $GITHUB_REF_NAME 生成，部署只认这个文件。"
+          fi
+          gh release upload "$GITHUB_REF_NAME" "out/$prefix.tar.gz" "out/$prefix.tar.gz.sha256" --clobber

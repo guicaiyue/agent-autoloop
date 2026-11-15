@@ -1,0 +1,90 @@
+name: sync-upstream
+
+# 把 KKKKhazix/agent-autoloop 的 main 合进本仓库 main。
+# 只同步，不打 tag、不发版、不碰线上：上线是另一个 workflow（release.yml）和另一条规则的事。
+# 冲突时整个合并放弃、fork 的 main 保持原样，并开一个 issue 写清哪些文件冲突。
+on:
+  schedule:
+    - cron: "17 */6 * * *" # 每 6 小时一次，避开整点高峰
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: 取上游
+        run: |
+          git remote add upstream https://github.com/KKKKhazix/agent-autoloop.git
+          git fetch --quiet upstream main
+          echo "behind=$(git rev-list --count HEAD..upstream/main)" >> "$GITHUB_ENV"
+          echo "base=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: 已经是最新
+        if: env.behind == '0'
+        run: echo "上游没有新提交，什么都没做。" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 合并
+        if: env.behind != '0'
+        id: merge
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git merge --no-ff --no-edit upstream/main; then
+            echo "merged=1" >> "$GITHUB_ENV"
+          else
+            git diff --name-only --diff-filter=U > /tmp/conflicts.txt || true
+            echo "merged=0" >> "$GITHUB_ENV"
+          fi
+
+      - name: 冲突：放弃合并并开 issue
+        if: env.merged == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git merge --abort || true
+          {
+            echo "自动同步上游时发生冲突，**没有合并任何东西**，fork 的 \`main\` 保持原样。"
+            echo
+            echo "上游：\`KKKKhazix/agent-autoloop@main\`，落后 ${{ env.behind }} 个提交。"
+            echo
+            echo "冲突文件："
+            echo '```'
+            cat /tmp/conflicts.txt 2>/dev/null || echo "(读不到冲突清单)"
+            echo '```'
+            echo
+            echo "处理办法：本地 \`git fetch upstream && git merge upstream/main\` 解完冲突推上来，下一个周期会自动接上。"
+          } > /tmp/body.md
+          gh issue create --title "同步上游冲突（$(date -u +%F)）" --body-file /tmp/body.md || true
+          echo "冲突，已开 issue，未合并。" >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+      - name: 记录这一批合了什么
+        if: env.merged == '1'
+        run: |
+          {
+            echo "### 这次合进来的上游提交（${{ env.behind }} 个）"
+            echo
+            git log --no-merges --pretty='- %s（%h）' "$base..HEAD"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 推上去
+        if: env.merged == '1'
+        run: git push origin main
+
+      - name: 打完这一批的结论
+        if: env.merged == '1'
+        run: |
+          echo "同步完成：合进来 ${{ env.behind }} 个上游提交，$(git rev-parse --short "$base")..$(git rev-parse --short HEAD)。没有打 tag。" >> "$GITHUB_STEP_SUMMARY"
