@@ -31,26 +31,34 @@ jobs:
           git fetch --quiet upstream main
           echo "behind=$(git rev-list --count HEAD..upstream/main)" >> "$GITHUB_ENV"
           echo "base=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          # 用标志位而不是数字比较：GitHub 的 == 会把空串和 "0" 都当数字 0，
+          # 于是「没跑合并」会被当成「合并失败」，冲突分支被误触发。
+          if [ "$(git rev-list --count HEAD..upstream/main)" = "0" ]; then
+            echo "state=uptodate" >> "$GITHUB_ENV"
+          else
+            echo "state=behind" >> "$GITHUB_ENV"
+          fi
 
       - name: 已经是最新
-        if: env.behind == '0'
+        if: env.state == 'uptodate'
         run: echo "上游没有新提交，什么都没做。" >> "$GITHUB_STEP_SUMMARY"
 
       - name: 合并
-        if: env.behind != '0'
+        if: env.state == 'behind'
         id: merge
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if git merge --no-ff --no-edit upstream/main; then
-            echo "merged=1" >> "$GITHUB_ENV"
+            echo "state=merged" >> "$GITHUB_ENV"
           else
             git diff --name-only --diff-filter=U > /tmp/conflicts.txt || true
-            echo "merged=0" >> "$GITHUB_ENV"
+            echo "state=conflict" >> "$GITHUB_ENV"
           fi
 
       - name: 冲突：放弃合并并开 issue
-        if: env.merged == '0'
+        if: env.state == 'conflict'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -72,7 +80,7 @@ jobs:
           exit 1
 
       - name: 记录这一批合了什么
-        if: env.merged == '1'
+        if: env.state == 'merged'
         run: |
           {
             echo "### 这次合进来的上游提交（${{ env.behind }} 个）"
@@ -81,10 +89,10 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: 推上去
-        if: env.merged == '1'
+        if: env.state == 'merged'
         run: git push origin main
 
       - name: 打完这一批的结论
-        if: env.merged == '1'
+        if: env.state == 'merged'
         run: |
           echo "同步完成：合进来 ${{ env.behind }} 个上游提交，$(git rev-parse --short "$base")..$(git rev-parse --short HEAD)。没有打 tag。" >> "$GITHUB_STEP_SUMMARY"
