@@ -143,7 +143,7 @@ test("an agent plugin that can't read what it printed fails that run, and the hu
   });
   const up = it.up();
   await until(() => answers(it.port), "中台应答");
-  assert.equal(it.cli("emit", "try.start", "--subject", "#1").status, 0);
+  assert.equal(it.cli("emit", "autoloop.try.test", "--subject", "#1").status, 0);
   const owner = () => JSON.parse(readFileSync(join(it.home, "config.json"), "utf8")).owner as string;
   const firstRun = async () => {
     const response = await fetch(`http://127.0.0.1:${it.port}/v1/state`, {
@@ -202,7 +202,7 @@ export default { command: () => [process.execPath, "-e", hold], read: () => ({})
   t.after(() => writeFileSync(join(signals, "release"), ""));
   const up = it.up();
   await until(() => answers(it.port), "中台应答");
-  assert.equal(it.cli("emit", "try.start", "--subject", "#1").status, 0);
+  assert.equal(it.cli("emit", "autoloop.try.test", "--subject", "#1").status, 0);
   const runs = join(it.home, "worker", "runs");
   // Started and not just about to: one that can't write to its folder while starting counts as the hub being out of reach,
   // and that waits 30 seconds before the next round.
@@ -307,7 +307,7 @@ test("whatever comes along while a failed tick waits to go again doesn't lose it
     before: (home) => edit(join(home, "config.json"), (config) => delete config.worker),
     failures: 2,
   });
-  assert.equal(it.cli("emit", "try.start", "--subject", "#1").status, 0);
+  assert.equal(it.cli("emit", "autoloop.try.test", "--subject", "#1").status, 0);
   await until(() => alive(up) === false || askFirst()[0] === "只问这一件", "新规则生效");
   await landed();
 });

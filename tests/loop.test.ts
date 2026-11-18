@@ -111,7 +111,7 @@ test("one machine, one command: an event, a question, an answer, the work done",
   const rules = JSON.parse(readFileSync(join(home, "rules.json"), "utf8"));
   mkdirSync(join(home, "work"));
   rules.rules[0].cwd = join(home, "work");
-  rules.rules[0].when.types = ["hello.*", "try.*"];
+  rules.rules[0].when.types = ["hello.*", "autoloop.try.test"];
   writeFileSync(join(home, "rules.json"), JSON.stringify(rules));
 
   up = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", bin, "up"], { env, stdio: "ignore" });

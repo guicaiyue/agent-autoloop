@@ -224,7 +224,7 @@ function starterRules(agents: Record<string, object>, first: string) {
     rules: [
       {
         name: "试一下",
-        when: { source: "local", types: ["try.*"] },
+        when: { source: "local", types: ["autoloop.try.test"] },
         to: first,
         cwd: path.join(HOME, "try"),
         prompt:
@@ -432,7 +432,7 @@ async function tryIt() {
   const before = await owner.state().catch(() => ({ runs: [] }));
   const attempts = attemptsOf(before.runs);
   await client(config.source.key, config)
-    .event({ id: `try-${stamp}`, type: "try.start", subject: `#${stamp}` })
+    .event({ id: `try-${stamp}`, type: "autoloop.try.test", subject: `#${stamp}` })
     .catch((error) => fail(`连不上中台（${error.message}）：先 agent-autoloop up 或 agent-autoloop service install`));
   const retrying = waitingRetry(before.runs);
   if (retrying) {
