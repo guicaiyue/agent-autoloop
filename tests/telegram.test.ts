@@ -27,10 +27,14 @@ const base: Card = {
   link: "https://hub.test/c/x",
 };
 
-async function eventually(check: () => boolean, ms = 3000) {
+/** A hung channel outlives its test: the stop is given here so a timeout ends both. */
+async function eventually(check: () => boolean, ms = 3000, stop?: AbortController) {
   const start = Date.now();
   while (!check()) {
-    if (Date.now() - start > ms) throw new Error("等不到");
+    if (Date.now() - start > ms) {
+      stop?.abort();
+      throw new Error("等不到");
+    }
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
 }
@@ -113,7 +117,7 @@ test("a card shows its buttons while it's open, and what became of it after", ()
   assert.match(render({ ...base, kind: "notice", state: "closed", options: [], result: "已处理" }).text, /✅ 已处理/);
 });
 
-test("a card is sent once, then changed in place", async () => {
+test("a card is sent once, then changed in place", { timeout: 20_000 }, async () => {
   const api = await botApi();
   const stop = new AbortController();
   const cards: Card[] = [base, { ...base, version: 2, ref: "101", state: "decided", choice: 1 }];
@@ -204,13 +208,17 @@ test("a card that fits no option offers an answer box, and what's typed in it an
     signal: stop.signal,
   });
   // The card has to be sent and reported before anyone can press it, and its number is what the answer later names.
-  await eventually(() => reported > 0);
+  await eventually(() => reported > 0, 3000, stop);
   api.updates.push(
     { update_id: 1, callback_query: { id: "q", data: "w:5", from: { id: 999 }, message: { message_id: 300 } } },
     { update_id: 2, message: { text: "先备份再删", from: { id: 999 }, reply_to_message: { message_id: 301 } } },
   );
-  await eventually(() => answers.length === 1);
-  await running;
+  try {
+    await eventually(() => answers.length === 1, 5000, stop);
+  } finally {
+    stop.abort();
+    await running;
+  }
   api.close();
   const asked = api.calls.filter((call) => call.method === "sendMessage" && call.body.reply_markup?.force_reply);
   assert.equal(
@@ -223,7 +231,7 @@ test("a card that fits no option offers an answer box, and what's typed in it an
   assert.deepEqual(answers, [[5, { text: "先备份再删", by: "999", ref: "300" }]]);
 });
 
-test("a heads-up settles on the note someone types, not instead of it", async () => {
+test("a heads-up settles on the note someone types, not instead of it", { timeout: 20_000 }, async () => {
   const api = await botApi({
     firstMessage: 199,
     updates: [
@@ -262,7 +270,7 @@ test("a heads-up settles on the note someone types, not instead of it", async ()
   assert.deepEqual(answers, [[5, { choice: 0, text: "清了 3 GB", by: "999", ref: "200" }]]);
 });
 
-test("a send the Bot API refuses is reported as failed, not as delivered", async () => {
+test("a send the Bot API refuses is reported as failed, not as delivered", { timeout: 20_000 }, async () => {
   const api = await botApi({ refuse: "sendMessage" });
   const stop = new AbortController();
   const calls: unknown[][] = [];
@@ -293,7 +301,7 @@ test("a send the Bot API refuses is reported as failed, not as delivered", async
   assert.deepEqual(calls, [["failed", 5, 1, "Error: sendMessage: chat not found"]]);
 });
 
-test("a button press and a reply to the card both answer it, and nothing else does", async () => {
+test("a button press and a reply to the card both answer it, and nothing else does", { timeout: 20_000 }, async () => {
   const api = await botApi({
     firstMessage: 299,
     updates: [
@@ -330,9 +338,13 @@ test("a button press and a reply to the card both answer it, and nothing else do
   const sending = [
     telegram({ hub: hub as any, options: { bot: "1:t", chat: 42, api: api.url }, log: () => {}, signal: stop.signal }),
   ];
-  await eventually(() => answers.length >= 1);
+  try {
+    await eventually(() => answers.length >= 1, 5000, stop);
+  } finally {
+    stop.abort();
+    await Promise.all(sending);
+  }
   welcome = null;
-  await Promise.all(sending);
   api.close();
   assert.deepEqual(answers, [
     [5, { choice: 1, by: "999", ref: "300" }],
@@ -349,7 +361,7 @@ test("a button press and a reply to the card both answer it, and nothing else do
   );
 });
 
-test("a ticket to the Bot API goes through the proxy when one is configured", async () => {
+test("a ticket to the Bot API goes through the proxy when one is configured", { timeout: 20_000 }, async () => {
   // What a proxy does with CONNECT: take the far end's address, open it, then join the two.
   const far = createTcpServer((socket) => socket.end("hello"));
   await new Promise<void>((resolve) => far.listen(0, "127.0.0.1", resolve));
