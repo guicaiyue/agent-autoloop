@@ -115,6 +115,42 @@ test("DSH: a completed turn's final text is its answer, with every step's tokens
   });
 });
 
+// A model that opens with "let me read the context first", does the work and then ends the turn without saying what it
+// did: DSH hands back that opening as `final.text`, and a card built from it says nothing about the run. Only words said
+// after the last piece of work are an answer; the same words before it are no result at all, so the round is retried.
+test("DSH: a final that only repeats what it said before any work left no result", () => {
+  const said = "我先读取这一轮的上下文文件，以及 Horon 的记忆说明。";
+  const before = dsh.read(
+    lines(
+      opened,
+      { type: "status", phase: "step_start" },
+      { type: "text", text: said },
+      { type: "tool_call", callId: "1", tool: "bash", input: {} },
+      { type: "tool_result", callId: "1", status: "completed", result: "资料" },
+      step({ inputTokens: 7, outputTokens: 1 }),
+      turnEnded(completed),
+      final(said, completed),
+    ),
+    0,
+    "",
+  );
+  assert.equal(before.text, undefined, "an opener from before the work isn't a conclusion");
+  assert.equal(before.error, "DSH 没有完成并留下实际结果");
+  const after = dsh.read(
+    lines(
+      opened,
+      { type: "tool_call", callId: "1", tool: "bash", input: {} },
+      { type: "tool_result", callId: "1", status: "completed", result: "资料" },
+      { type: "text", text: said },
+      final(said, completed),
+    ),
+    0,
+    "",
+  );
+  assert.equal(after.text, said, "the same words after the work are its answer");
+  assert.equal(after.error, undefined);
+});
+
 test("DSH: a turn that's still going has no answer and no error", () => {
   const reading = dsh.read(
     lines(opened, step({ inputTokens: 7, outputTokens: 1, cacheReadTokens: 2 }), { type: "text", text: "中途" }),

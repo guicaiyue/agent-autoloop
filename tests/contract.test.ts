@@ -91,6 +91,17 @@ test("a rule's session title is the first line, filled from the subject its even
   assert.match(promptFor(job() as any, "/tmp/ctx.json").split("\n")[0], /^Agent 自动化中台/, "no title, no line");
 });
 
+// The first line is the whole of what a rule that tells every round shows someone; an Agent that opens with "let me look
+// at the context first" or "checked, here is the report" fills it with that instead of the conclusion, and the owner sees a
+// card with no result in it. The prompt has to say the first line is the conclusion, from its first character, and name the
+// openings that aren't.
+test("the first line is the conclusion, with no opener before it", () => {
+  const text = promptFor(job() as any, "/tmp/ctx.json");
+  assert.match(text, /第一行就是结论/);
+  assert.match(text, /开场白/);
+  for (const opener of ["我先", "接下来", "核对完毕", "下面是"]) assert.ok(text.includes(opener), `names「${opener}」`);
+});
+
 test("the prompt mentions what this run is carrying on, and what it may emit", () => {
   const text = promptFor(
     job({

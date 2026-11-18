@@ -16,6 +16,7 @@ test("all built-in kinds use the same loader and external plugins take precedenc
     ["dsh", "agent"],
     ["zcode", "agent"],
     ["feishu", "channel"],
+    ["telegram", "channel"],
     ["webhook", "channel"],
     ["github", "source"],
   ] as const)

@@ -373,6 +373,10 @@ function briefError(error: string, run: number) {
       .split("\n")
       .findLast((part) => part.trim())
       ?.trim() ?? error;
+  // An interface refusing a request answers with its status and a body of English keys. The status is what the owner can
+  // act on; the body stays behind `why` with everything else.
+  const refused = /^\S*\s*API error \((\d{3})\)/i.exec(line);
+  if (refused) return `模型接口返回 ${refused[1]}，被上游拒绝（完整原因：agent-autoloop why ${run}）`;
   const characters = [...line];
   if (characters.length <= 120 && line === error) return error;
   const cut = characters.length > 120 ? `…${characters.slice(-120).join("")}` : line;

@@ -310,6 +310,28 @@ test("the failing card carries the last line of a long error, its end when it's 
   assert.ok(text.includes(`agent-autoloop why ${job.run}`), text);
 });
 
+// An agent passes on whatever its interface said, and an interface refusing a request answers in a shape like
+// `zifei API error (400): {"message":…,"type":…,"code":…}`. Read whole to the owner, that line is a status code and a bag of
+// English keys where the reason should be. The status is the part worth reading; the rest stays behind `why`.
+test("a refusal from the model's interface reads as the status it refused with, not as its answer body", () => {
+  clean();
+  ingest("app", note(1), at(0));
+  const error =
+    'zifei API error (400): {"message":"上游拒绝了该请求，请检查请求参数",' +
+    '"type":"invalid_request_error","code":"upstream_request_rejected"}';
+  let job = claim("w1", at(0))!;
+  finish(job.run, job.token, { outcome: "failed", error }, at(1));
+  job = claim("w1", at(6))!;
+  finish(job.run, job.token, { outcome: "failed", error }, at(7));
+  job = claim("w1", at(17))!;
+  finish(job.run, job.token, { outcome: "failed", error }, at(18));
+  const text = told()[0].text;
+  assert.ok(text.includes("卡在：模型接口返回 400，被上游拒绝（"), text);
+  assert.ok(!text.includes("zifei"), text);
+  assert.ok(!text.includes("upstream_request_rejected"), text);
+  assert.ok(text.includes(`agent-autoloop why ${job.run}`), text);
+});
+
 test("after ten failures in a row a run stops, tells the owner once, and newer events still get done", () => {
   clean();
   ingest("app", note(1), at(0));

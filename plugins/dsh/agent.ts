@@ -48,6 +48,10 @@ export default {
     let final: { text?: unknown; reason?: { kind?: string; error?: { message?: string } } | null } | undefined;
     let failed: string | undefined;
     let usage: Usage | undefined;
+    let calls = 0;
+    // What it said, and how much work it had done by then: words from before the last piece of work are what it meant to
+    // do, not what it came back with.
+    const said = new Map<string, number>();
     for (const line of stdout.split("\n")) {
       let event: any;
       try {
@@ -60,6 +64,8 @@ export default {
       if (event.type === "session" && typeof event.sessionId === "string") session = event.sessionId;
       else if (event.type === "status" && event.phase === "step_end") usage = addUsage(usage, stepUsage(event.usage));
       else if (event.type === "final") final = event;
+      else if (event.type === "tool_call") calls++;
+      else if (event.type === "text" && typeof event.text === "string") said.set(event.text, calls);
       // With --json a mistake in how it was started goes here and nowhere else.
       else if (event.type === "error" && typeof event.message === "string") failed = event.message;
     }
@@ -71,7 +77,11 @@ export default {
       reading.finished = true;
       const kind = final.reason?.kind;
       if (kind === "completed") {
-        if (typeof final.text === "string" && final.text.trim()) reading.text = final.text;
+        // A turn that opened with "let me read the context first", worked, and ended without a word after the work ends
+        // with that opener as its `final` text. It says nothing about what the run did: there's no result to hand in.
+        const before = typeof final.text === "string" ? said.get(final.text) : undefined;
+        const ended = before !== undefined && before < calls;
+        if (typeof final.text === "string" && final.text.trim() && !ended) reading.text = final.text;
         else reading.error = NO_RESULT;
       } else if (kind === "error") reading.error = final.reason?.error?.message || NOT_FINISHED;
       else reading.error = WHY_NOT[kind ?? ""] ?? NOT_FINISHED;
