@@ -104,7 +104,7 @@ Claude 主任务要委托 Codex 操作网页时，从 `examples/recipes/browser-
 "channels": { "feishu": { "key": "…", "user": "ou_用户的 open_id" } }
 ```
 
-同一个飞书应用的卡片点击只能有一个监听，只在一台电脑上跑。
+同一个飞书应用的卡片点击只能有一个监听，只在一台电脑上跑。重启后日志说“飞书那边还记着这个应用的另一条事件连接”，是飞书还没放开旧连接，可能要几个小时；中台每分钟重试一次，期间卡片点击收不到。`lark-cli event status`、`event stop` 只管本机，管不了飞书那边的旧连接；别的电脑也在跑这个应用的监听就先停掉它。
 
 **Telegram**：走 Bot API，机器人自己长轮询，这台电脑不用开端口，但它得连得上 `api.telegram.org`。在 @BotFather 那里建机器人拿令牌；先给机器人发一句话，`getUpdates` 里就能看到自己的数字用户 id。
 
@@ -156,13 +156,13 @@ Claude 主任务要委托 Codex 操作网页时，从 `examples/recipes/browser-
   "trusted": [12345678],
   "agents": {
     "codex": null,
-    "claude": { "model": "gpt-6.1-sol", "effort": "xhigh" },
+    "claude": { "model": "gpt-6.2-sol", "effort": "xhigh" },
     "gemini": { "command": ["/绝对路径/reviewer", "{input}"] }
   }
 }
 ```
 
-`agents` 给每个 Agent 写一个审查器：`null` 是免审；`model`、`effort` 是内置 Codex 审查用的模型和推理深度，没写的那项用默认（`gpt-6.1-sol`、`high`）；`command` 换成一条命令，约定同 `review.command`。没列出的 Agent 和没声明来源的改动走默认审查，也就是 `review.command`，没写就是内置 Codex。免审的改动碰到 `xhigh` 的路径或打了 `deliver-review`，照样走默认审查；内置 Codex 在 `xhigh` 的路径上深度不低于 `xhigh`。
+`agents` 给每个 Agent 写一个审查器：`null` 是免审；`model`、`effort` 是内置 Codex 审查用的模型和推理深度，没写的那项用默认（`gpt-6.2-sol`、`high`）；`command` 换成一条命令，约定同 `review.command`。没列出的 Agent 和没声明来源的改动走默认审查，也就是 `review.command`，没写就是内置 Codex。免审的改动碰到 `xhigh` 的路径或打了 `deliver-review`，照样走默认审查；内置 Codex 在 `xhigh` 的路径上深度不低于 `xhigh`。
 
 来源用提交状态声明。整份改动都是同一个 Agent 写的，才在要交付的提交上写这一条，说明里填 Agent 名字（小写字母开头，只用小写字母、数字和 `-`）：
 
