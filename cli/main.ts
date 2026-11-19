@@ -223,7 +223,7 @@ function starterRules(agents: Record<string, object>, first: string) {
     channels: { desktop: { name: "桌面通知" } },
     rules: [
       {
-        name: "试一下",
+        name: "中台：消息验证",
         when: { source: "local", types: ["autoloop.try.test"] },
         to: first,
         cwd: path.join(HOME, "try"),

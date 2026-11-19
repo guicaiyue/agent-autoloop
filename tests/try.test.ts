@@ -132,4 +132,9 @@ test("only a failure since this try started counts", () => {
   assert.equal(newFailure([run(3, 0)], before), undefined, "not tried yet");
   assert.equal(newFailure([run(4, 1, { state: "claimed" })], before), undefined, "going again");
   assert.equal(newFailure([run(5, 1, { rule: "别的" })], before), undefined, "another rule");
+  assert.equal(
+    newFailure([run(6, 1, { rule: "中台：消息验证" })], before)?.id,
+    6,
+    "改名后的规则名也认（两台机器还没升级时会发旧名）",
+  );
 });

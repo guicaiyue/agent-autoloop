@@ -137,7 +137,7 @@ test("one machine, one command: an event, a question, an answer, the work done",
 
   const emitted = cli("emit", "hello.world", "--subject", "x-1", "--summary", "你好");
   assert.equal(emitted.status, 0, emitted.stderr);
-  assert.match(emitted.stdout, /交给了：试一下/);
+  assert.match(emitted.stdout, /交给了：中台：消息验证/);
 
   const config = JSON.parse(readFileSync(join(home, "config.json"), "utf8"));
   const state = async () => (await get("/v1/state", { authorization: `Bearer ${config.owner}` })).json();
@@ -156,7 +156,7 @@ test("one machine, one command: an event, a question, an answer, the work done",
   const waiting = cli("status");
   assert.match(waiting.stdout, /等你 1/);
   assert.match(waiting.stdout, new RegExp(`#${card.id} 试跑：选一个颜色`));
-  assert.match(waiting.stdout, /来源：试一下/);
+  assert.match(waiting.stdout, /来源：中台：消息验证/);
   assert.match(waiting.stdout, /2\. 绿色（推荐）/);
   assert.match(waiting.stdout, new RegExp(`agent-autoloop answer ${card.id} `));
 
@@ -174,7 +174,7 @@ test("one machine, one command: an event, a question, an answer, the work done",
   assert.equal(finished.recentCards[0].by, "本人");
   assert.deepEqual(
     notifications(),
-    ["试跑：选一个颜色", "来源：试一下", "运行 agent-autoloop status 查看"],
+    ["试跑：选一个颜色", "来源：中台：消息验证", "运行 agent-autoloop status 查看"],
     "once, saying which rule asked, and not for the answer",
   );
   assert.match(cli("answer", String(card.id), "1").stdout, /已经/);
