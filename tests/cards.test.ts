@@ -893,3 +893,22 @@ test("a card's link goes only to a channel that allows it, and opens only that c
   assert.equal(cardByToken(new URL(link).pathname.slice("/c/".length))!.id, id);
   assert.equal(cardByToken("made-up"), undefined);
 });
+
+test("a notice updated by a later round still belongs to the round that made it", () => {
+  clean();
+  // `why` finds a card by its run_id: handing it to the latest round would hide it from the round that made it.
+  const round = (n: number, text: string, now: number) => {
+    ingest("app", note(1, `step${n}`), now);
+    const job = claim("w1", now)!;
+    started(job.run, job.token, { session: `s-${n}` }, now);
+    finish(job.run, job.token, { outcome: "done", notice: [{ title: "进度", text, key: "todo" }] }, now);
+    return job.run;
+  };
+  const first = round(1, "1/3", at(0));
+  const second = round(2, "2/3", at(2));
+  const [card] = all<any>("SELECT * FROM cards WHERE kind = 'notice'");
+  assert.equal(card.version, 2);
+  assert.equal(card.run_id, first, "the card stays with the round that made it");
+  assert.notEqual(card.run_id, second);
+  assert.equal(card.session, "s-1", "and with the session it was made in");
+});

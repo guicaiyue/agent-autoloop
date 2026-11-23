@@ -276,13 +276,9 @@ function cardFromReceipt(draft: Draft, run: Row, kind: string, card: Row) {
   if (kind === "notice") {
     const [open] = rows(draft.view, "cards", { key, state: "open" }, 1, true);
     if (open) {
-      put(draft, "cards", open.id, {
-        title: card.title,
-        text: card.text,
-        version: open.version + 1,
-        run_id: run.id,
-        session,
-      });
+      // Only the words and the version: run_id and session name the round that made this card, and `why` reads a card
+      // by its run_id. Handing them to the latest round would take the card out of the log of the round that made it.
+      put(draft, "cards", open.id, { title: card.title, text: card.text, version: open.version + 1 });
       return;
     }
   }
