@@ -375,6 +375,51 @@ test("a channel's answer must come from someone on its list, on the message it s
   assert.equal(answer(id, { choice: 0, by: "me", channel: "chat", ref: "om_1" }, at(2)).changed, true);
 });
 
+test("a notice said again by a later round under the same key replaces its words, and the new version is worth sending", () => {
+  clean();
+  // Each round is a run of its own; the key is the thread's, so a later round says the same notice again.
+  const round = (n: number, text: string, now: number) => {
+    ingest("app", note(1, `step${n}`), now);
+    const job = claim("w1", now)!;
+    finish(job.run, job.token, { outcome: "done", notice: [{ title: "进度", text, key: "todo" }] }, now);
+    return job;
+  };
+  round(1, "1/3", at(0));
+  const [card] = all<any>("SELECT * FROM cards WHERE kind = 'notice'");
+  const before = card.version;
+  delivered("chat", card.id, before, "m1", at(1));
+  assert.deepEqual(nextCard("chat", at(2)), null, "sent already: the same words are not sent twice");
+  round(2, "2/3", at(3));
+  const after = one<any>("SELECT * FROM cards WHERE id = ?", [card.id])!;
+  assert.equal(after.text, "2/3", "the same key replaces the words instead of adding a card");
+  assert.equal(after.version, before + 1, "a new version, or the channel would have nothing to send");
+  assert.equal(after.state, "open");
+  assert.equal(all("SELECT id FROM cards WHERE kind = 'notice'").length, 1);
+  assert.equal(nextCard("chat", at(4))!.version, after.version, "and it goes out again");
+});
+
+test("a notice's words stay put once it is closed, and another thread's key isn't touched", () => {
+  clean();
+  const round = (subject: number, text: string, now: number) => {
+    ingest("app", note(subject, `step${now}`), now);
+    const job = claim("w1", now)!;
+    finish(job.run, job.token, { outcome: "done", notice: [{ title: "进度", text, key: "todo" }] }, now);
+  };
+  round(1, "1/3", at(0));
+  const [first] = all<any>("SELECT * FROM cards WHERE kind = 'notice'");
+  resolve(first.id, "看过了", "owner", at(1));
+  round(1, "2/3", at(2));
+  assert.equal(card(first.id).text, "1/3", "a closed card keeps what it said");
+  assert.equal(card(first.id).version, 2, "and is only changed by being closed");
+  // Closed means the owner dealt with it, so a later round saying it again is news: a card of its own.
+  const open = all<any>("SELECT * FROM cards WHERE kind = 'notice' AND state = 'open'");
+  assert.equal(open.length, 1);
+  assert.equal(open[0].text, "2/3");
+  // Another subject is another thread: its notice under the same key is its own.
+  round(2, "1/2", at(3));
+  assert.equal(all("SELECT id FROM cards WHERE kind = 'notice'").length, 3);
+});
+
 test("a run may resolve only what it was given to check, and a bad id doesn't spoil its own result", () => {
   clean();
   const mine = asked(1).id;

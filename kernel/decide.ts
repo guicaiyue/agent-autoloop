@@ -269,6 +269,23 @@ function cardFromReceipt(draft: Draft, run: Row, kind: string, card: Row) {
   const key = `thread:${run.rule}:${run.lane}:${name}`;
   // Closed as it's made, nothing open stops it coming again: a run trying again says it once.
   if (fyi && rows(draft.view, "cards", { key, run_id: run.id }, 1).length) return;
+  // An open notice under this thread's key is the same notice said again, and what a later round says replaces what an
+  // earlier one did: a card that only ever said the first thing would be a stale list nobody can act on. Its version goes
+  // up, which is what tells a channel the message it holds is out of date. A question is never replaced: an answer to it
+  // would land on words the owner never read.
+  if (kind === "notice") {
+    const [open] = rows(draft.view, "cards", { key, state: "open" }, 1, true);
+    if (open) {
+      put(draft, "cards", open.id, {
+        title: card.title,
+        text: card.text,
+        version: open.version + 1,
+        run_id: run.id,
+        session,
+      });
+      return;
+    }
+  }
   createCard(draft, { ...card, hops: hopsOf(draft, run), key, kind, fyi, quiet, ...threadOf(run), ...origin });
 }
 
