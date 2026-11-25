@@ -3,12 +3,14 @@
 // never sent answers something; an update is sent again as a second message instead of changed; a refused send is reported
 // as delivered; a configured proxy is skipped; the poll gives up after one error; card words are sent with a parse mode
 // that would make Telegram refuse them; a plain message in the chat answers the card that came before it.
+// A card that carries a link still arrives as text when the store is slow, refuses, or holds more than a chat app takes;
+// a picture sent once is changed by its caption, because Telegram won't edit text into a message that has none.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { connect as netConnect, createServer as createTcpServer } from "node:net";
 import { test } from "node:test";
-import telegram, { render, tunnel } from "../plugins/telegram/channel.ts";
+import telegram, { attachmentIn, render, tunnel } from "../plugins/telegram/channel.ts";
 import type { Card } from "../host/channels.ts";
 
 const base: Card = {
@@ -40,7 +42,7 @@ async function eventually(check: () => boolean, ms = 3000, stop?: AbortControlle
 }
 
 /** A stand-in for api.telegram.org: it records every call and hands back the updates it was given, once each. */
-async function botApi(options: { updates?: any[]; refuse?: string; firstMessage?: number } = {}) {
+async function botApi(options: { updates?: any[]; refuse?: string; refuseWith?: string; firstMessage?: number } = {}) {
   const calls: { method: string; body: any }[] = [];
   const updates = [...(options.updates ?? [])];
   let next = options.firstMessage ?? 100;
@@ -48,7 +50,8 @@ async function botApi(options: { updates?: any[]; refuse?: string; firstMessage?
     let text = "";
     request.on("data", (chunk) => (text += chunk));
     request.on("end", () => {
-      const body = text ? JSON.parse(text) : {};
+      // A card with an attachment goes up as multipart, which isn't JSON; it's kept as the bytes it was.
+      const body = !text ? {} : text.startsWith("{") ? JSON.parse(text) : text;
       const method = String(request.url).split("/").pop();
       calls.push({ method: method!, body });
       const send = (payload: unknown) => {
@@ -61,8 +64,12 @@ async function botApi(options: { updates?: any[]; refuse?: string; firstMessage?
         return setTimeout(() => send({ ok: true, result }), result.length ? 0 : 50);
       }
       if (options.refuse === method) return send({ ok: false, description: "chat not found" });
+      if (options.refuseWith && method === "editMessageText")
+        return send({ ok: false, description: options.refuseWith });
       if (method === "sendMessage") return send({ ok: true, result: { message_id: ++next } });
-      if (method === "editMessageText") return send({ ok: true, result: { message_id: body.message_id } });
+      if (MEDIA.includes(method!)) return send({ ok: true, result: { message_id: ++next } });
+      if (method === "editMessageText" || method === "editMessageCaption")
+        return send({ ok: true, result: { message_id: body.message_id } });
       return send({ ok: true, result: true });
     });
   });
@@ -384,4 +391,214 @@ test("a ticket to the Bot API goes through the proxy when one is configured", { 
   far.close();
   proxy.close();
   assert.equal(said, "hello");
+});
+
+const MEDIA = ["sendPhoto", "sendDocument", "sendAnimation", "sendVideo"];
+
+/** A stand-in for the object store a card's link points into: HEAD and GET answer with what the test set up. */
+async function objectStore(said: { type?: string; body?: Buffer; length?: number; status?: number; hang?: boolean }) {
+  const asked: string[] = [];
+  const server = createServer((request, response) => {
+    asked.push(String(request.method));
+    // A store that takes the connection and says nothing: only the channel's own deadline ends it.
+    if (said.hang) return;
+    if (said.status && said.status !== 200) {
+      response.statusCode = said.status;
+      return response.end("nope");
+    }
+    response.setHeader("content-type", said.type ?? "image/png");
+    response.setHeader("content-length", String(said.length ?? said.body?.length ?? 0));
+    if (request.method === "HEAD") return response.end();
+    response.end(said.body);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const at = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  return {
+    asked,
+    origin: at,
+    link: `${at}/autoloop-attachments/2026-11-25/0123456789a-shot.png`,
+    close: () => {
+      server.closeAllConnections();
+      server.close();
+    },
+  };
+}
+
+/** Runs the channel over these cards until each one has been reported, then stops it. */
+async function deliverCards(
+  cards: Card[],
+  options: Record<string, unknown> = {},
+  given?: Awaited<ReturnType<typeof botApi>>,
+) {
+  const api = given ?? (await botApi());
+  const stop = new AbortController();
+  const reports: unknown[][] = [];
+  const queue = [...cards];
+  const done = (what: string) => reports.filter((call) => call[0] === what).length >= cards.length;
+  await telegram({
+    hub: {
+      async nextCard() {
+        const card = queue.shift();
+        if (card) return { card };
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return { card: null };
+      },
+      async delivered(...args: unknown[]) {
+        reports.push(["delivered", ...args]);
+        if (done("delivered")) stop.abort();
+        return {};
+      },
+      async failed(...args: unknown[]) {
+        reports.push(["failed", ...args]);
+        if (done("failed")) stop.abort();
+        return {};
+      },
+      async answer() {
+        return { changed: true };
+      },
+    } as any,
+    options: { bot: "1:t", chat: 42, api: api.url, ...options },
+    log: () => {},
+    signal: stop.signal,
+  });
+  api.close();
+  return { calls: api.calls, reports };
+}
+
+const caption = (call: { body: any }) => /name="caption"\r\n\r\n([\s\S]*?)\r\n--/.exec(String(call.body))?.[1] ?? "";
+const buttons = (call: { body: any }) =>
+  /name="reply_markup"\r\n\r\n([\s\S]*?)\r\n--/.exec(String(call.body))?.[1] ?? "";
+const filename = (call: { body: any }) => /filename="([^"]*)"/.exec(String(call.body))?.[1] ?? "";
+
+test("only a line that is a link on its own counts as an attachment", () => {
+  assert.equal(attachmentIn("截图在这\nhttps://s3.test/a/shot.png"), "https://s3.test/a/shot.png");
+  assert.equal(attachmentIn("见 https://s3.test/a/shot.png 这张"), null, "a link inside a sentence is prose");
+  assert.equal(attachmentIn("https://s3.test/a/shot.png。"), "https://s3.test/a/shot.png", "a full stop doesn't join");
+  assert.equal(attachmentIn("ftp://s3.test/a"), null, "only what a channel can fetch over http");
+  assert.equal(attachmentIn(""), null);
+});
+
+test(
+  "a card whose text carries a link arrives as the picture, not as a line of text",
+  { timeout: 20_000 },
+  async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
+    const s3 = await objectStore({ type: "image/png", body: png });
+    const card: Card = { ...base, text: `构建截图\n${s3.link}` };
+    const { calls, reports } = await deliverCards([card]);
+    s3.close();
+    const photo = calls.filter((call) => call.method === "sendPhoto");
+    assert.equal(photo.length, 1, "the picture is the message");
+    assert.equal(calls.filter((call) => call.method === "sendMessage").length, 0);
+    assert.equal(filename(photo[0]), "0123456789a-shot.png", "the name it goes up under is the one in the link");
+    assert.match(caption(photo[0]), /构建截图/, "the words still arrive");
+    assert.ok(!caption(photo[0]).includes(s3.link), "the link isn't spelled out under the picture");
+    assert.match(buttons(photo[0]), /c:5:0/, "the buttons ride on the picture");
+    assert.match(
+      String(photo[0].body),
+      /name="photo"; filename="0123456789a-shot\.png"/,
+      "the field is the one sendPhoto takes",
+    );
+    assert.deepEqual(reports, [["delivered", 5, 1, "101"]]);
+  },
+);
+
+test("an attachment the store says is over 10 MB travels as the link alone", { timeout: 20_000 }, async () => {
+  const s3 = await objectStore({ type: "video/mp4", length: 12 * 1024 * 1024 });
+  const card: Card = { ...base, text: `录屏\n${s3.link}` };
+  const { calls } = await deliverCards([card]);
+  s3.close();
+  assert.deepEqual(s3.asked, ["HEAD"], "nothing was downloaded");
+  assert.equal(calls.filter((call) => MEDIA.includes(call.method)).length, 0);
+  const said = calls.filter((call) => call.method === "sendMessage");
+  assert.equal(said.length, 1);
+  assert.match(said[0].body.text, /录屏[\s\S]*autoloop-attachments/, "the link is still there to open");
+});
+
+test("an attachment that doesn't arrive in time travels as the link alone", { timeout: 20_000 }, async () => {
+  const s3 = await objectStore({ hang: true });
+  const card: Card = { ...base, text: `截图\n${s3.link}` };
+  const { calls } = await deliverCards([card], { mediaSeconds: 0.2 });
+  s3.close();
+  assert.equal(calls.filter((call) => MEDIA.includes(call.method)).length, 0, "a hung store can't hold the channel");
+  assert.match(calls.find((call) => call.method === "sendMessage")!.body.text, /autoloop-attachments/);
+});
+
+test("an attachment the store refuses travels as the link alone", { timeout: 20_000 }, async () => {
+  const s3 = await objectStore({ status: 403 });
+  const card: Card = { ...base, text: `截图\n${s3.link}` };
+  const { calls } = await deliverCards([card]);
+  s3.close();
+  assert.equal(calls.filter((call) => MEDIA.includes(call.method)).length, 0);
+  assert.match(calls.find((call) => call.method === "sendMessage")!.body.text, /autoloop-attachments/);
+});
+
+test("a file that isn't a picture goes up as the file it is", { timeout: 20_000 }, async () => {
+  const s3 = await objectStore({ type: "application/pdf", body: Buffer.from("%PDF-1.4") });
+  const card: Card = { ...base, text: `报告\n${s3.link}` };
+  const { calls } = await deliverCards([card]);
+  s3.close();
+  const files = calls.filter((call) => call.method === "sendDocument");
+  assert.equal(files.length, 1);
+  assert.match(caption(files[0]), /报告/);
+  assert.equal(calls.filter((call) => call.method === "sendPhoto").length, 0);
+});
+
+test("a picture already sent is changed by its caption, which a text edit can't do", { timeout: 20_000 }, async () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 9, 9]);
+  const s3 = await objectStore({ type: "image/png", body: png });
+  const first: Card = { ...base, text: `构建截图\n${s3.link}` };
+  const second: Card = { ...first, version: 2, ref: "101", state: "decided", choice: 1 };
+  const { calls } = await deliverCards([first, second]);
+  s3.close();
+  assert.equal(calls.filter((call) => call.method === "editMessageText").length, 0);
+  const changed = calls.filter((call) => call.method === "editMessageCaption");
+  assert.equal(changed.length, 1, "the picture is updated in place, not sent twice");
+  assert.equal(changed[0].body.message_id, 101);
+  assert.match(changed[0].body.caption, /⏳ 已记录：留着/);
+});
+
+test("a picture from before a restart is still changed by its caption", { timeout: 20_000 }, async () => {
+  // Which messages hold a picture lives in this process's memory, so a restart forgets it: Telegram's own refusal is
+  // what says the words are a caption now.
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 7, 7]);
+  const s3 = await objectStore({ type: "image/png", body: png });
+  const api = await botApi({ refuseWith: "Bad Request: there is no text in the message to edit" });
+  const card: Card = { ...base, version: 2, ref: "101", state: "decided", choice: 1, text: `构建截图\n${s3.link}` };
+  const { calls } = await deliverCards([card], {}, api);
+  s3.close();
+  const changed = calls.filter((call) => call.method === "editMessageCaption");
+  assert.equal(changed.length, 1, "the caption is what a picture's words are");
+  assert.equal(changed[0].body.message_id, 101);
+  assert.match(changed[0].body.caption, /⏳ 已记录：留着/);
+});
+
+test("a link only this network reaches goes out under the name a phone can open", { timeout: 20_000 }, async () => {
+  const s3 = await objectStore({ status: 404 });
+  // Both ways this network writes the same bucket: a card may carry either, and the phone can open neither.
+  const media = { public: "https://media.example", local: [s3.origin, "http://192.168.1.4:19000"] };
+  const lan = s3.link.replace(s3.origin, "http://192.168.1.4:19000");
+  const cards: Card[] = [
+    { ...base, id: 6, text: `图挂了\n${s3.link}` },
+    { ...base, id: 7, text: `图也挂了\n${lan}` },
+  ];
+  const { calls } = await deliverCards(cards, { media });
+  s3.close();
+  const said = calls.filter((call) => call.method === "sendMessage").map((call) => call.body.text);
+  assert.equal(said.length, 2);
+  for (const text of said) {
+    assert.match(text, /https:\/\/media\.example\/autoloop-attachments/, "a phone can open this one");
+    assert.ok(!text.includes("127.0.0.1") && !text.includes("192.168.1.4"), "a LAN address opens nothing on a phone");
+  }
+});
+
+test("a card naming the public address still has its picture read from this network", { timeout: 20_000 }, async () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 4, 4]);
+  const s3 = await objectStore({ type: "image/png", body: png });
+  const media = { public: "https://media.example", local: s3.origin };
+  const card: Card = { ...base, text: `构建截图\n${s3.link.replace(s3.origin, media.public)}` };
+  const { calls } = await deliverCards([card], { media });
+  s3.close();
+  assert.deepEqual(s3.asked, ["HEAD", "GET"], "the bytes came over the LAN, not round the internet");
+  assert.equal(calls.filter((call) => call.method === "sendPhoto").length, 1);
 });

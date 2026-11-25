@@ -108,6 +108,8 @@ Claude 主任务要委托 Codex 操作网页时，从 `examples/recipes/browser-
 
 **Telegram**：走 Bot API，机器人自己长轮询，这台电脑不用开端口，但它得连得上 `api.telegram.org`。在 @BotFather 那里建机器人拿令牌；先给机器人发一句话，`getUpdates` 里就能看到自己的数字用户 id。
 
+卡片只有文字，要发图或文件先 `agent-autoloop attach <文件>`（按 `config.json` 的 `attachments` 放进对象存储），把打印出来的链接单独写在一行——Telegram 把第一个这样的链接取下来发成图片或文件，超过 10 MB、15 秒内取不到、类型不支持就退回发链接。`attachments.publicUrl` 决定卡片里写哪个地址，通道用 `media: { public, local }` 在展示时换成域名、取图时换回内网。
+
 ```json
 // config.json
 "channels": { "telegram": { "key": "…", "bot": "<机器人令牌>", "chat": 123456789,

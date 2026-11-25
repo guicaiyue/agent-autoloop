@@ -11,6 +11,8 @@ export type Config = {
   hub?: { listen: string; publicUrl?: string };
   worker?: { name: string; key: string; capacity?: number; unreachable?: string[] };
   channels?: Record<string, ChannelConfig>;
+  /** Where attachments go before a card carries their link; the hub itself never holds a byte of them. */
+  attachments?: { endpoint: string; bucket: string; accessKey: string; secretKey: string; prefix?: string };
   source?: { name: string; key: string };
   owner?: string;
 };

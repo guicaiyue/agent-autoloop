@@ -97,6 +97,8 @@ export function promptFor(job: Job, contextFile: string) {
       '确实要让他知道、但不用他做什么的 notice 才加 "fyi":true：它一样会推送，发完就结案，下一轮看不到。还没解决的事、没跑成的一轮不要加。',
     "- resolve 只结 open 里列出的卡片，要到原处核实过；一条里有几件事要全部核实才能结。" +
       "读不到依据、只是另一件事做成了，都不能算解决。还在等人的卡片不用重发，它一直开着。",
+    "- 要让人看到一张图或一个文件：先 `agent-autoloop attach <文件>`，把打印出来的链接单独写在一行。" +
+      "一张卡片只有一个链接会变成图或文件，其余照旧是文字；链接单独成行才算，混在句子里不算。",
     '- 取消 waiting 里的复查：later 里写 {"key":"它的 key","cancel":true}，不写 at 和 about。',
   ].join("\n");
 }

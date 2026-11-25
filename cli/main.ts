@@ -26,6 +26,7 @@ import {
 import { versionLine } from "../host/version.ts";
 import { clockFor, colorFor, render, replayCommand, skippedLine } from "./status.ts";
 import { attemptsOf, newFailure, waitingRetry } from "./try.ts";
+import { upload } from "./attach.ts";
 
 const ROOT = path.join(import.meta.dirname, "..");
 const PROGRAM = path.join(ROOT, "bin", "agent-autoloop.ts");
@@ -68,6 +69,7 @@ const HELP = `Agent 自动化中台
   agent-autoloop key list                有哪些密钥
   agent-autoloop key remove <种类> <名字>  立即收回一把密钥
   agent-autoloop add <git 地址>           安装插件，不自动更新
+  agent-autoloop attach <文件>...          把文件放进对象存储，打印能写进卡片正文的链接
   agent-autoloop mcp                      用标准输入输出连接 MCP 客户端
   agent-autoloop join <中台地址> --worker <名字> --key <密钥> [--no-service]
                                     另一台电脑只接活时用
@@ -122,6 +124,13 @@ const RESTORE_USAGE = `用法：agent-autoloop restore <目录> [--yes]
 /** What each command reads besides its own words, and how to use it. */
 const TAKES: Record<string, { flags: string[]; usage: string }> = {
   add: { flags: [], usage: "用法：agent-autoloop add <git 地址>" },
+  attach: {
+    flags: ["bucket", "prefix"],
+    usage: `用法：agent-autoloop attach <文件>... [--bucket 名字] [--prefix 前缀]
+
+把文件放进 config.json 里 attachments 指的对象存储，打印可以直接写进回执 text 的链接。
+链接单独占一行才会被通道当成附件；一张卡片只发第一个。`,
+  },
   answer: { flags: ["text"], usage: "用法：agent-autoloop answer <卡片> [序号] [--text 别的想法]" },
   ask: {
     flags: ["task"],
@@ -421,6 +430,14 @@ async function chooseAt(terminal: ReturnType<typeof createInterface>, card: Card
     if (Number.isInteger(choice) && choice >= 1 && choice <= card.options.length) return choice - 1;
     console.log(`输入 1 到 ${card.options.length}。`);
   }
+}
+
+async function attachCommand(args: string[]) {
+  const { named, rest } = flags(args);
+  if (!rest.length) return fail(TAKES.attach.usage);
+  const bucket = text(named.bucket);
+  const urls = await upload(rest, bucket ? { bucket } : undefined, text(named.prefix));
+  for (const url of urls) console.log(url);
 }
 
 async function tryIt() {
@@ -912,6 +929,7 @@ const [command, ...args] = process.argv.slice(2);
 const commands: Record<string, () => unknown> = {
   mcp: async () => (await import("./mcp.ts")).mcp(),
   add: () => addPlugin(args),
+  attach: () => attachCommand(args),
   init: () => init(args),
   join: () => join(args),
   up: async () => (await import("../host/up.ts")).up(),
