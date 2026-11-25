@@ -159,7 +159,7 @@ Agent 结束了这一轮，问了你一个问题。它现在不占进程、不�
 | **通道**：去哪找你拍板 | [桌面通知](plugins/desktop/channel.ts)（默认开启）、[飞书](plugins/feishu/channel.ts)、[Telegram](plugins/telegram/channel.ts)、[钉钉 / 企微 / Slack / Discord](plugins/webhook/templates.ts) | [说明](skills/agent-autoloop/SKILL.md#接一个通道) |
 | **交付**：把 CI/CD 也做成插件 | [`delivery`](plugins/delivery/delivery.ts) | [说明](skills/agent-autoloop/SKILL.md#交付流水线) |
 
-**实测情况：** Claude Code、Codex 和 ACP（官方 Codex ACP 适配器）跑通了多轮问答和跨进程会话续接；ZCode 跑通了提问、回答后接回原会话；飞书跑通了发送、按钮回调和卡片更新；Telegram 在真实机器人上跑通了发送、按钮回答、自己输入答案和就地改消息；四种 Webhook 模板只在本地模拟服务上验证过，GitLab Webhook 按官方文档的格式测试，没连过真实 GitLab。这些文字通道靠回答链接拍板，要把 `hub.publicUrl` 配成手机或电脑能打开的地址。
+**实测情况：** Claude Code、Codex 和 ACP（官方 Codex ACP 适配器）跑通了多轮问答和跨进程会话续接；ZCode 跑通了提问、回答后接回原会话；飞书跑通了发送、按钮回调和卡片更新；Telegram 在真实机器人上跑通了发送、按钮回答、自己输入答案、就地改消息，以及把正文里单独一行的链接发成图片（超 10 MB 时退回发链接）；四种 Webhook 模板只在本地模拟服务上验证过，GitLab Webhook 按官方文档的格式测试，没连过真实 GitLab。这些文字通道靠回答链接拍板，要把 `hub.publicUrl` 配成手机或电脑能打开的地址。
 
 **内置 Agent 走第三方网关。** Claude Code、Codex 要接第三方模型服务，或者启动前要先设好环境变量，写一个设好变量再启动它的小脚本，在 Agent 里写 `"program": "脚本路径"`，会话续接和用量统计照旧，见[说明](skills/agent-autoloop/SKILL.md#接一个-agent)。
 
